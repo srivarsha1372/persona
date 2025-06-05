@@ -9,12 +9,7 @@ from langchain.schema import SystemMessage, HumanMessage, AIMessage
 load_dotenv()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
-# LangChain LLM (Groq)
-llm = ChatGroq(
-    groq_api_key=groq_api_key,
-    model="llama3-8b-8192"
-)
-
+# File for celebrity data
 DATA_FILE = "celebs.json"
 
 # Load / Save logic
@@ -37,25 +32,119 @@ def generate_persona(celebrity_name):
     response = llm([HumanMessage(content=prompt)])
     return response.content
 
-# Load saved celebrities
+# Initialize LangChain LLM
+llm = ChatGroq(
+    groq_api_key=groq_api_key,
+    model="llama3-8b-8192"
+)
+
+# Load Celebrities
 celebs = load_celebs()
 
-# Custom style dictionary
-celeb_styles = {
-    "Albert Einstein": {"bg": "#202040", "text": "#ffffff"},
-    "Taylor Swift": {"bg": "#fdf2f8", "text": "#7c3aed"},
-    "Adolf Hitler": {"bg": "#1e1e1e", "text": "#ff4d4d"},
-    "Tony Stark": {"bg": "#0a0a0a", "text": "#fbbf24"},
-    "default": {"bg": "#262730", "text": "#ffffff"}
-}
-
-# Streamlit App
+# Streamlit Page Setup
+st.set_page_config(page_title="AI Celebrity Chat")
 st.title("🗣️ Chat with a Celebrity")
 
-# Sidebar for managing celebrities
-with st.sidebar:
-    st.header("🎭 Manage Celebrities")
-    # Add new celebrity
+# Tabs for managing and chatting
+tab1, tab2 = st.tabs(["💬 Chat", "🎭 Manage Celebrities"])
+
+# ----------- Chat Tab ----------- #
+with tab1:
+    if not celebs:
+        st.warning("No celebrities found. Please add one in the 'Manage Celebrities' tab.")
+        st.stop()
+
+    celeb_styles = {
+        "Albert Einstein": {"bg": "#202040", "text": "#ffffff"},
+        "Taylor Swift": {"bg": "#fdf2f8", "text": "#7c3aed"},
+        "Adolf Hitler": {"bg": "#1e1e1e", "text": "#ff4d4d"},
+        "Tony Stark": {"bg": "#0a0a0a", "text": "#fbbf24"},
+        "default": {"bg": "#262730", "text": "#ffffff"}
+    }
+
+    selected_celeb = st.selectbox("Choose a Celebrity", list(celebs.keys()))
+    if st.button("🧹 Reset Chat"):
+        if "chat_memory" in st.session_state and selected_celeb in st.session_state.chat_memory:
+            st.session_state.chat_memory[selected_celeb] = []
+        st.rerun()
+
+    persona_prompt = celebs[selected_celeb]
+
+    if "chat_memory" not in st.session_state:
+        st.session_state.chat_memory = {}
+
+    if selected_celeb not in st.session_state.chat_memory:
+        st.session_state.chat_memory[selected_celeb] = []
+
+    chat_history = st.session_state.chat_memory[selected_celeb]
+
+    st.chat_message("system").markdown(f"**You are now chatting with {selected_celeb}.**")
+
+    for msg in chat_history:
+        st.chat_message("user").markdown(msg["user"])
+        st.chat_message("assistant").markdown(msg["bot"])
+
+    user_input = st.chat_input(f"Talk to {selected_celeb}...")
+
+    if user_input:
+        st.chat_message("user").markdown(user_input)
+
+        messages = [
+            SystemMessage(content=persona_prompt),
+            *[message for msg in chat_history for message in [
+                HumanMessage(content=msg["user"]),
+                AIMessage(content=msg["bot"])
+            ]],
+            HumanMessage(content=user_input)
+        ]
+
+        typing_placeholder = st.empty()
+        typing_placeholder.markdown("🧠 *Thinking...*")
+        response = llm.invoke(messages)
+        bot_reply = response.content
+        typing_placeholder.empty()
+
+        style = celeb_styles.get(selected_celeb, celeb_styles["default"])
+        bg_color = style["bg"]
+        text_color = style["text"]
+
+        fade_in_html = f"""
+        <div style="
+            animation: fadeIn 0.6s ease-in;
+            background-color: {bg_color};
+            padding: 1rem;
+            border-radius: 0.75rem;
+            color: {text_color};
+            margin-top: 0.5rem;">
+            {bot_reply}
+        </div>
+        <style>
+            @keyframes fadeIn {{
+                0% {{ opacity: 0; transform: translateY(10px); }}
+                100% {{ opacity: 1; transform: translateY(0); }}
+            }}
+        </style>"""
+
+        st.markdown(fade_in_html, unsafe_allow_html=True)
+
+        chat_history.append({
+            "user": user_input,
+            "bot": bot_reply
+        })
+
+    scroll_script = """
+        <script>
+            const chatArea = window.parent.document.querySelector('section.main');
+            if (chatArea) {
+                chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: 'smooth' });
+            }
+        </script>
+    """
+    st.components.v1.html(scroll_script, height=0)
+
+# ----------- Manage Celebs Tab ----------- #
+with tab2:
+    st.subheader("➕ Add a New Celebrity")
     with st.form("add_celebrity"):
         name = st.text_input("Celebrity Name")
         generate = st.form_submit_button("Generate Sample Persona")
@@ -72,8 +161,7 @@ with st.sidebar:
             save_celebs(celebs)
             st.success(f"Saved {name}!")
 
-    # Edit/Delete celebrities
-    st.subheader("🗂️ Edit / Delete")
+    st.subheader("🗂️ Manage Existing Celebrities")
     for celeb, prompt in celebs.items():
         with st.expander(celeb):
             new_prompt = st.text_area("Edit Persona", value=prompt, key=celeb)
@@ -86,87 +174,3 @@ with st.sidebar:
                 del celebs[celeb]
                 save_celebs(celebs)
                 st.warning(f"Deleted {celeb}")
-
-# Main chat interface
-if not celebs:
-    st.warning("No celebrities found. Please add one using the sidebar.")
-    st.stop()
-
-selected_celeb = st.selectbox("Choose a Celebrity", list(celebs.keys()))
-if st.button("🧹 Reset Chat"):
-    if "chat_memory" in st.session_state and selected_celeb in st.session_state.chat_memory:
-        st.session_state.chat_memory[selected_celeb] = []
-    st.rerun()
-
-persona_prompt = celebs[selected_celeb]
-
-if "chat_memory" not in st.session_state:
-    st.session_state.chat_memory = {}
-
-if selected_celeb not in st.session_state.chat_memory:
-    st.session_state.chat_memory[selected_celeb] = []
-
-chat_history = st.session_state.chat_memory[selected_celeb]
-
-st.chat_message("system").markdown(f"**You are now chatting with {selected_celeb}.**")
-
-for msg in chat_history:
-    st.chat_message("user").markdown(msg["user"])
-    st.chat_message("assistant").markdown(msg["bot"])
-
-user_input = st.chat_input(f"Talk to {selected_celeb}...")
-
-if user_input:
-    st.chat_message("user").markdown(user_input)
-
-    messages = [
-        SystemMessage(content=persona_prompt),
-        *[message for msg in chat_history for message in [
-            HumanMessage(content=msg["user"]),
-            AIMessage(content=msg["bot"])
-        ]],
-        HumanMessage(content=user_input)
-    ]
-    typing_placeholder = st.empty()
-    typing_placeholder.markdown("🧠 *Thinking...*")
-    response = llm.invoke(messages)
-    bot_reply = response.content
-    typing_placeholder.empty()
-    style = celeb_styles.get(selected_celeb, celeb_styles["default"])
-    bg_color = style["bg"]
-    text_color = style["text"]
-
-    fade_in_html = f"""
-                    <div style="
-                        animation: fadeIn 0.6s ease-in;
-                        background-color: {bg_color};
-                        padding: 1rem;
-                        border-radius: 0.75rem;
-                        color: {text_color};
-                        margin-top: 0.5rem;">
-                        {bot_reply}
-                    </div>
-                    <style>
-                        @keyframes fadeIn {{
-                        0% {{ opacity: 0; transform: translateY(10px); }}
-                        100% {{ opacity: 1; transform: translateY(0); }}
-                    }}
-                    </style>"""
-
-    st.markdown(fade_in_html, unsafe_allow_html=True)
-
-    chat_history.append({
-        "user": user_input,
-        "bot": bot_reply
-    })
-
-# Auto-scroll to bottom using JS
-scroll_script = """
-    <script>
-        const chatArea = window.parent.document.querySelector('section.main');
-        if (chatArea) {
-            chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: 'smooth' });
-        }
-    </script>
-"""
-st.components.v1.html(scroll_script, height=0)
