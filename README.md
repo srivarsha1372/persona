@@ -29,10 +29,6 @@ Welcome to **AI Celebrity Chat**, an interactive and fun Streamlit app where you
 
 ---
 
-## 📸 Preview
-
-![Preview](https://your-screenshot-url.com/preview.png)
-
 ---
 
 ## 📁 Project Structure
