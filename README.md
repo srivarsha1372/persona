@@ -61,8 +61,8 @@ Welcome to **AI Celebrity Chat**, an interactive and fun Streamlit app where you
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/aipersona.git
-cd aipersona
+git clone https://github.com/srivarsha1372/persona.git
+cd persona
 ```
 
 ### 2. Create Environment Variables
@@ -75,7 +75,7 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ### 3. Install Dependencies
 
-```bash
+```sbash
 pip install -r requirements.txt
 ```
 
